@@ -294,7 +294,7 @@ let
                 Documentation.AllowedValues = {"company", "contact", "deal", "ticket"}
             ]),
             optional propertyList as (type list meta [
-                Documentation.FieldCaption = "Propriedades"
+                Documentation.FieldCaption = "Propriedades do Objeto"
             ])
         ) as any meta Documentation_Metadata,
 
