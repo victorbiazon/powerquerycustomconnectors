@@ -2,6 +2,7 @@ let
     //Código da função
     func = 
         (
+            apiKey as text,
             entityType as text,
             optional objectType as text,
             optional propertyList as list
@@ -10,16 +11,23 @@ let
         let
             Fonte = 
                 if entityType = "objects"
-                then getObjects(objectType, propertyList)
+                then getObjects(apiKey, objectType, propertyList)
                 else if entityType = "properties"
-                    then getProperties(objectType)
-                    else getEngagements()
+                    then getProperties(apiKey, objectType)
+                    else if entityType = "engagements"
+                        then getEngagements(apiKey)
+                        else if entityType = "calling dispositions"
+                            then getDispositions(apiKey)
+                            else if entityType = "owners"
+                                then getOwners(apiKey)
+                                else Table.FromValue("Tipo inválido.")
         in
             Fonte,
 
     //Funções auxiliares
     getObjects = 
         (
+            apiKey as text,
             objectType as text,
             optional propertyList as list
         ) as table =>
@@ -44,7 +52,7 @@ let
                         limit = "100",
                         archived = "false",
                         after = "0",
-                        hapikey = "af52ca65-599a-4d1a-aa5c-018dce40bff1"
+                        hapikey = apiKey
                     ]
                 else
                     [
@@ -52,7 +60,7 @@ let
                         properties = properties,
                         archived = "false",
                         after = "0",
-                        hapikey = "af52ca65-599a-4d1a-aa5c-018dce40bff1"
+                        hapikey = apiKey
                     ], 
             func = 
                 (
@@ -82,12 +90,15 @@ let
                             in
                                 after
                         otherwise null,
-                    Retorno = [dados = dados, relativePath = relativePath, query = Record.TransformFields(query, {"after", each next})]
+                    Retorno = 
+                        if query[after] = null
+                        then [dados = null, relativePath = null, query = null, previous = null]
+                        else [dados = dados, relativePath = relativePath, query = Record.TransformFields(query, {"after", each next}), previous = query[after]]
                 in
                     Retorno,
             Retorno = List.Generate(
-                () => [dados = null, relativePath = relativePath, query = query],
-                each _[query][after] <> null,
+                () => [dados = null, relativePath = relativePath, query = query, previous = "0"],
+                each _[previous] <> null,
                 each func(_[relativePath], _[query]),
                 each _[dados]
             ),
@@ -100,6 +111,7 @@ let
 
     getProperties = 
         (
+            apiKey as text,
             objectType as text
         )
         as table =>
@@ -115,7 +127,7 @@ let
                             Query = 
                                 [
                                     archived = "false",
-                                    hapikey = "af52ca65-599a-4d1a-aa5c-018dce40bff1"
+                                    hapikey = apiKey
                                 ]
                         ]
                     ), 
@@ -127,12 +139,14 @@ let
             paraTabela,
 
     getEngagements = 
-        () as table =>
+        (
+            apiKey as text    
+        ) as table =>
 
         let
             func = 
                 (
-                    optional offset as text
+                    offset as text
                 ) as record =>
                 let
                     importar = 
@@ -145,21 +159,27 @@ let
                                         [
                                             limit = "250",
                                             offset = offset,
-                                            hapikey = "af52ca65-599a-4d1a-aa5c-018dce40bff1"
+                                            hapikey = apiKey
                                         ]
                                 ]
                             ), 
                             65001
                         ),
                     dados = importar[results],
-                    next = try importar[offset] otherwise null,
-                    Retorno = [dados = dados, next = next]
+                    next = 
+                        if importar[hasMore] = true
+                        then importar[offset]
+                        else null,
+                    Retorno = 
+                        if offset = null
+                        then [dados = null, next = null, previous = null]
+                        else [dados = dados, next = next, previous = offset]
                 in
                     Retorno,
             
             Retorno = List.Generate(
-                () => [dados = null, next = "0"],
-                each _[next] <> null,
+                () => [dados = null, next = "0", previous = "0"],
+                each _[previous] <> null,
                 each func(Text.From(_[next])),
                 each _[dados]
             ),
@@ -170,12 +190,104 @@ let
         in
             #"Column1 Expandido",
 
+    getDispositions =
+        (
+            apiKey as text
+        ) as table =>
+
+        let
+            importar = 
+                Json.Document(
+                    Web.Contents(
+                        "https://api.hubapi.com/",
+                        [
+                            RelativePath = "calling/v1/dispositions",
+                            Query = 
+                                [
+                                    hapikey = apiKey
+                                ]
+                        ]
+                    ), 
+                    65001
+                ),
+            #"Convertido para Tabela" = Table.FromList(importar, Splitter.SplitByNothing(), null, null, ExtraValues.Error),
+            #"Column1 Expandido" = Table.ExpandRecordColumn(#"Convertido para Tabela", "Column1", {"id", "label", "deleted"}, {"id", "label", "deleted"})
+        in
+            #"Column1 Expandido",
+    
+    getOwners = 
+        (
+            apiKey as text
+        ) as any =>
+
+        let
+            func = 
+                (
+                    after as text
+                ) as record =>
+
+                let
+                    query = 
+                        if after = "0"
+                        then [
+                            limit = "500",
+                            hapikey = apiKey
+                        ]
+                        else [
+                            limit = "500",
+                            after = after,
+                            hapikey = apiKey
+                        ],
+                    importar = 
+                        Json.Document(
+                            Web.Contents(
+                                "https://api.hubapi.com/",
+                                [
+                                    RelativePath = "crm/v3/owners",
+                                    Query = query
+                                ]
+                            ), 
+                            65001
+                        ),
+                    dados = importar[results],
+                    next = 
+                        try
+                            let
+                                paging = importar[paging],
+                                next = paging[next],
+                                after = next[after]
+                            in
+                                after
+                        otherwise null,
+                    Retorno = 
+                        if after = null
+                        then [dados = null, next = null, previous = null]
+                        else [dados = dados, next = next, previous = after]
+                in
+                    Retorno,
+            
+            Retorno = List.Generate(
+                () => [dados = null, next = "0", previous = "0"],
+                each _[previous] <> null,
+                each func(Text.From(_[next])),
+                each _[dados]
+            ),
+            #"Remover Primeira Linha" = List.RemoveNulls(Retorno),
+            #"Convertido para Tabela" = Table.FromList(#"Remover Primeira Linha", Splitter.SplitByNothing(), null, null, ExtraValues.Error),
+            #"Column1 Expandido" = Table.ExpandListColumn(#"Convertido para Tabela", "Column1"),
+            #"Column1 Expandido1" = Table.ExpandRecordColumn(#"Column1 Expandido", "Column1", {"id", "email", "firstName", "lastName", "userId", "createdAt", "updatedAt", "archived", "teams"}, {"id", "email", "firstName", "lastName", "userId", "createdAt", "updatedAt", "archived", "teams"})
+        in
+            #"Column1 Expandido1",
+
     //Documentação dos parâmetros
     Doc_func = 
         type function (
+            apiKey as (type text meta [
+                Documentation.FieldCaption = "Chave de API"
+            ]),
             entityType as (type text meta [
                 Documentation.FieldCaption = "Tipo",
-                Documentation.AllowedValues = {"objects", "properties", "engagements"}
+                Documentation.AllowedValues = {"objects", "properties", "engagements", "calling dispositions", "owners"}
             ]),
              optional objectType as (type text meta [
                 Documentation.FieldCaption = "Objeto",
@@ -184,7 +296,7 @@ let
             optional propertyList as (type list meta [
                 Documentation.FieldCaption = "Propriedades"
             ])
-        ) as table meta Documentation_Metadata,
+        ) as any meta Documentation_Metadata,
 
     //Documentação da função
     Documentation_Metadata = 
