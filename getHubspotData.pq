@@ -20,7 +20,9 @@ let
                             then getDispositions(apiKey)
                             else if entityType = "owners"
                                 then getOwners(apiKey)
-                                else Table.FromValue("Tipo inválido.")
+                                else if entityType = "pipelines"
+                                    then getPipelines(apiKey, objectType)
+                                    else Table.FromValue("Tipo inválido.")
         in
             Fonte,
 
@@ -50,6 +52,7 @@ let
                 then
                     [
                         limit = "100",
+                        associations = "company",
                         archived = "false",
                         after = "0",
                         hapikey = apiKey
@@ -57,6 +60,7 @@ let
                 else
                     [
                         limit = "100",
+                        associations = "company",
                         properties = properties,
                         archived = "false",
                         after = "0",
@@ -105,7 +109,7 @@ let
             #"Remover Primeira Linha" = List.RemoveNulls(Retorno),
             #"Convertido para Tabela" = Table.FromList(#"Remover Primeira Linha", Splitter.SplitByNothing(), null, null, ExtraValues.Error),
             #"Column1 Expandido3" = Table.ExpandListColumn(#"Convertido para Tabela", "Column1"),
-            #"Column1 Expandido" = Table.ExpandRecordColumn(#"Column1 Expandido3", "Column1", {"id", "properties", "createdAt", "updatedAt", "archived"}, {"id", "properties", "createdAt", "updatedAt", "archived"})
+            #"Column1 Expandido" = Table.ExpandRecordColumn(#"Column1 Expandido3", "Column1", {"id", "properties", "createdAt", "updatedAt", "archived", "associations"}, {"id", "properties", "createdAt", "updatedAt", "archived", "associations"})
         in
             #"Column1 Expandido",
 
@@ -134,9 +138,10 @@ let
                     65001
                 ),
             dados = importar[results],
-            paraTabela = Table.FromList(dados, Splitter.SplitByNothing(), null, null, ExtraValues.Error)
-        in
-            paraTabela,
+            paraTabela = Table.FromList(dados, Splitter.SplitByNothing(), null, null, ExtraValues.Error),
+            #"Column1 Expandido" = Table.ExpandRecordColumn(paraTabela, "Column1", {"updatedAt", "createdAt", "name", "label", "type", "fieldType", "description", "groupName", "options", "displayOrder", "calculated", "externalOptions", "hasUniqueValue", "hidden", "modificationMetadata", "formField"}, {"updatedAt", "createdAt", "name", "label", "type", "fieldType", "description", "groupName", "options", "displayOrder", "calculated", "externalOptions", "hasUniqueValue", "hidden", "modificationMetadata", "formField"})
+        in    
+            #"Column1 Expandido",
 
     getEngagements = 
         (
@@ -146,7 +151,7 @@ let
         let
             func = 
                 (
-                    offset as text
+                    optional offset as text
                 ) as record =>
                 let
                     importar = 
@@ -223,7 +228,7 @@ let
         let
             func = 
                 (
-                    after as text
+                    optional after as text
                 ) as record =>
 
                 let
@@ -279,6 +284,36 @@ let
         in
             #"Column1 Expandido1",
 
+    getPipelines = 
+        (
+            apiKey as text,
+            objectType as text
+        )
+        as table =>
+
+        let
+            relativePath = Text.Combine({"crm/v3/pipelines/", objectType}),
+            importar = 
+                Json.Document(
+                    Web.Contents(
+                        "https://api.hubapi.com/",
+                        [
+                            RelativePath = relativePath,
+                            Query = 
+                                [
+                                    archived = "false",
+                                    hapikey = apiKey
+                                ]
+                        ]
+                    ), 
+                    65001
+                ),
+            dados = importar[results],
+            paraTabela = Table.FromList(dados, Splitter.SplitByNothing(), null, null, ExtraValues.Error),
+            #"Column1 Expandido" = Table.ExpandRecordColumn(paraTabela, "Column1", {"label", "displayOrder", "id", "stages", "createdAt", "updatedAt", "archived"}, {"label", "displayOrder", "id", "stages", "createdAt", "updatedAt", "archived"})
+        in
+            #"Column1 Expandido",
+
     //Documentação dos parâmetros
     Doc_func = 
         type function (
@@ -287,7 +322,7 @@ let
             ]),
             entityType as (type text meta [
                 Documentation.FieldCaption = "Tipo",
-                Documentation.AllowedValues = {"objects", "properties", "engagements", "calling dispositions", "owners"}
+                Documentation.AllowedValues = {"objects", "properties", "engagements", "calling dispositions", "owners", "pipelines"}
             ]),
              optional objectType as (type text meta [
                 Documentation.FieldCaption = "Objeto",
@@ -296,7 +331,7 @@ let
             optional propertyList as (type list meta [
                 Documentation.FieldCaption = "Propriedades do Objeto"
             ])
-        ) as any meta Documentation_Metadata,
+        ) as table meta Documentation_Metadata,
 
     //Documentação da função
     Documentation_Metadata = 
