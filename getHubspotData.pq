@@ -94,9 +94,9 @@ let
                                 after
                         otherwise null,
                     Retorno = 
-                        if query[after] = null
+                        if after = null
                         then [dados = null, next = null, previous = null]
-                        else [dados = dados, next = next, previous = query[after]]
+                        else [dados = dados, next = next, previous = after]
                 in
                     Retorno,
             Retorno = List.Generate(
