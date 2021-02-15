@@ -68,8 +68,7 @@ let
                     ], 
             func = 
                 (
-                    relativePath as text,
-                    query as record
+                    optional after as text
                 ) as record =>
 
                 let
@@ -79,7 +78,7 @@ let
                                 "https://api.hubapi.com/",
                                 [
                                     RelativePath = relativePath,
-                                    Query = query
+                                    Query = Record.TransformFields(query, {"after", each after})
                                 ]
                             ), 
                             65001
@@ -96,14 +95,14 @@ let
                         otherwise null,
                     Retorno = 
                         if query[after] = null
-                        then [dados = null, relativePath = null, query = null, previous = null]
-                        else [dados = dados, relativePath = relativePath, query = Record.TransformFields(query, {"after", each next}), previous = query[after]]
+                        then [dados = null, next = null, previous = null]
+                        else [dados = dados, next = next, previous = query[after]]
                 in
                     Retorno,
             Retorno = List.Generate(
-                () => [dados = null, relativePath = relativePath, query = query, previous = "0"],
+                () => [dados = null, next = "0", previous = "0"],
                 each _[previous] <> null,
-                each func(_[relativePath], _[query]),
+                each func(Text.From(_[next])),
                 each _[dados]
             ),
             #"Remover Primeira Linha" = List.RemoveNulls(Retorno),
